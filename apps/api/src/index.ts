@@ -6,76 +6,6 @@ const app = express();
 app.use(cors());
 const port = process.env.PORT || 5000;
 
-async function getCharacterDetails(character: { url: string; name: string }) {
-  try {
-    const characterRes = await axios.get(character.url);
-    const details = characterRes.data.result.properties;
-
-    let homeworld = null;
-    if (details.homeworld) {
-      const homeworldRes = await axios.get(details.homeworld);
-      homeworld = homeworldRes.data.result.properties;
-    }
-
-    let films = [];
-    if (details.films && details.films.length > 0) {
-      films = await Promise.all(
-        details.films.map(async (filmUrl: string) => {
-          const filmRes = await axios.get(filmUrl);
-          return filmRes.data.result.properties;
-        })
-      );
-    }
-
-    let species = [];
-    if (details.species && details.species.length > 0) {
-      species = await Promise.all(
-        details.species.map(async (speciesUrl: string) => {
-          const speciesRes = await axios.get(speciesUrl);
-          return speciesRes.data.result.properties;
-        })
-      );
-    }
-
-    let vehicles = [];
-    if (details.vehicles && details.vehicles.length > 0) {
-      vehicles = await Promise.all(
-        details.vehicles.map(async (vehicleUrl: string) => {
-          const vehicleRes = await axios.get(vehicleUrl);
-          return vehicleRes.data.result.properties;
-        })
-      );
-    }
-
-    let starships = [];
-    if (details.starships && details.starships.length > 0) {
-      starships = await Promise.all(
-        details.starships.map(async (starshipUrl: string) => {
-          const starshipRes = await axios.get(starshipUrl);
-          return starshipRes.data.result.properties;
-        })
-      );
-    }
-
-    return {
-      ...character,
-      details: {
-        ...details,
-        homeworld,
-        films,
-        species,
-        vehicles,
-        starships,
-      },
-    };
-  } catch (error) {
-    console.error(`Error fetching details for ${character.name}:`, error);
-    return {
-      ...character,
-      error: "Failed to load some details",
-    };
-  }
-}
 
 app.get("/", (_req, res) => {
   res.send("Health Check: API is running!");
@@ -90,23 +20,24 @@ app.get("/api/characters", async (req, res) => {
         `https://www.swapi.tech/api/people?page=${page}&limit=${limit}`
       );
 
+      // Fetch additional details for each character
       const charactersWithDetails = await Promise.all(
-        swapiRes.data.results.map(
-          async (character: { url: string; name: string }) => {
-            return await getCharacterDetails(character);
-          }
-        )
+        swapiRes.data.results?.map(async (character: any) => {
+          return await getEnhancedCharacter(character);
+        })
       );
 
       return res.json({
         data: charactersWithDetails,
         pagination: {
-          totalRecords: swapiRes.data.total_records,
-          totalPages: swapiRes.data.total_pages,
+          totalRecords:
+            swapiRes.data.total_records || charactersWithDetails.length,
           currentPage: parseInt(String(page)),
           perPage: parseInt(String(limit)),
-          next: swapiRes.data.next,
-          previous: swapiRes.data.previous,
+        },
+        metadata: {
+          apiVersion: swapiRes.data.apiVersion,
+          timestamp: swapiRes.data.timestamp,
         },
       });
     }
@@ -116,35 +47,100 @@ app.get("/api/characters", async (req, res) => {
     }
 
     const swapiRes = await axios.get(
-      `https://www.swapi.tech/api/people/?name=${encodeURIComponent(name)}&page=${page}&limit=${limit}`
+      `https://www.swapi.tech/api/people?name=${encodeURIComponent(name)}&page=${page}&limit=${limit}`
     );
 
-    // Fetch additional details for each character in search results
     const charactersWithDetails = await Promise.all(
-      swapiRes.data.results.map(
-        async (character: { url: string; name: string }) => {
-          return await getCharacterDetails(character);
-        }
-      )
+      swapiRes.data.result.map(async (character: any) => {
+        return await getEnhancedCharacter(character);
+      })
     );
 
     res.json({
       data: charactersWithDetails,
       pagination: {
-        totalRecords: swapiRes.data.total_records,
-        totalPages: swapiRes.data.total_pages,
+        totalRecords:
+          swapiRes.data.total_records || charactersWithDetails.length,
         currentPage: parseInt(String(page)),
         perPage: parseInt(String(limit)),
-        next: swapiRes.data.next,
-        previous: swapiRes.data.previous,
+      },
+      metadata: {
+        apiVersion: swapiRes.data.apiVersion,
+        timestamp: swapiRes.data.timestamp,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
-    res.status(500).json({ error: "Failed to fetch characters" });
+    res.status(500).json({
+      error: "Failed to fetch characters",
+      details: error?.message,
+    });
   }
 });
 
+async function getEnhancedCharacter(character: {
+  properties: any;
+  url: string;
+  uid: any;
+  _id: any;
+  description: any;
+}) {
+  const properties =
+    character.properties ||
+    (await axios.get(character.url)).data.result.properties;
+
+  try {
+    const details = properties;
+
+    const homeworld = details.homeworld
+      ? (await axios.get(details.homeworld)).data.result.properties
+      : null;
+
+    const fetchRelated = async (urls: any[]) => {
+      if (!urls || urls.length === 0) return [];
+      return Promise.all(
+        urls.map((url: string) =>
+          axios.get(url).then((res) => res.data.result.properties)
+        )
+      );
+    };
+
+    return {
+      id: character.uid || character._id,
+      name: details.name,
+      description: character.description || "Star Wars character",
+      basicInfo: {
+        gender: details.gender,
+        birthYear: details.birth_year,
+        height: details.height,
+        mass: details.mass,
+        hairColor: details.hair_color,
+        skinColor: details.skin_color,
+        eyeColor: details.eye_color,
+      },
+      relations: {
+        homeworld,
+        films: await fetchRelated(details.films),
+        species: await fetchRelated(details.species),
+        vehicles: await fetchRelated(details.vehicles),
+        starships: await fetchRelated(details.starships),
+      },
+    };
+  } catch (error) {
+    console.error(
+      `Error enhancing character ${character.properties?.name || character.uid}:`,
+      error
+    );
+    return {
+      id: character.uid || character._id,
+      name: character.properties?.name || "Unknown",
+      error: "Failed to load some details",
+      basicInfo: {
+        ...(character.properties || {}),
+      },
+    };
+  }
+}
 app.get("/api/characters/:id", async (req, res) => {
   try {
     const { id } = req.params;
