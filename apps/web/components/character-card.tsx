@@ -46,7 +46,9 @@ export function CharacterCard({ character }: CharacterCardProps) {
         <CardContent className="space-y-3">
           <div className="flex items-center text-gray-300 text-sm">
             <User className="w-4 h-4 mr-2 text-blue-400" />
-            <span className="capitalize">{basicInfo?.gender || character?.gender}</span>
+            <span className="capitalize">
+              {basicInfo?.gender || character?.gender}
+            </span>
             <span className="mx-2">•</span>
             <span>{basicInfo?.birthYear || character?.birthYear}</span>
           </div>
@@ -61,7 +63,8 @@ export function CharacterCard({ character }: CharacterCardProps) {
           <div className="flex items-center text-gray-300 text-sm">
             <Calendar className="w-4 h-4 mr-2 text-purple-400" />
             <span>
-              {basicInfo?.height || character?.height}cm • {basicInfo?.mass || character?.mass}kg
+              {basicInfo?.height || character?.height}cm •{" "}
+              {basicInfo?.mass || character?.mass}kg
             </span>
           </div>
 
