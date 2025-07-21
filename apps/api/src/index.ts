@@ -81,7 +81,6 @@ app.get("/", (_req, res) => {
   res.send("Health Check: API is running!");
 });
 
-// Search characters with pagination and default top 10
 app.get("/api/characters", async (req, res) => {
   try {
     const { name, page = 1, limit = 10 } = req.query;
@@ -91,7 +90,6 @@ app.get("/api/characters", async (req, res) => {
         `https://www.swapi.tech/api/people?page=${page}&limit=${limit}`
       );
 
-      // Fetch additional details for each character
       const charactersWithDetails = await Promise.all(
         swapiRes.data.results.map(
           async (character: { url: string; name: string }) => {
@@ -152,11 +150,9 @@ app.get("/api/characters/:id", async (req, res) => {
     const { id } = req.params;
     const swapiRes = await axios.get(`https://www.swapi.tech/api/people/${id}`);
 
-    // Enhance response with additional details
     const character = swapiRes.data.result;
     const details = character.properties;
 
-    // Fetch homeworld details if available
     let homeworld = null;
     if (details.homeworld) {
       const homeworldRes = await axios.get(details.homeworld);
